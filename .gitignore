@@ -1,0 +1,42 @@
+# OS
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursor/
+
+# Vercel
+.vercel/
+.next/
+
+# Node (defensive — not used in this skill)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (defensive)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Secrets — NEVER commit
+.env*
+*.key
+*.pem
+secrets.json
+config.local.*
+
+# Build artifacts that shouldn't be in source
+*.log
+*.tmp
+dist/
+build/
