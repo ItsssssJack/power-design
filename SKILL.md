@@ -26,6 +26,14 @@ Offer three options:
 **Q2 — What's the deck about?**
 Ask for: headline + 3–5 key points + audience. That's enough.
 
+**One confirmation before generating: brand logo placement.**
+The default is: **brand logo present on every slide** — small wordmark, bottom-left, ~24px tall, 5% safe-zone from edges. This is non-negotiable unless the user opts out.
+
+Confirm once with a single line:
+> *"I'll include the brand logo on every slide (small wordmark, bottom-left). Want it omitted, moved, or sized differently?"*
+
+If they say "looks good" / "yes" / give no preference → use the default. If they say "no logo" → omit. If they say "title slide only" → only the hero slide. Don't ask twice.
+
 Then **generate**. Don't ask more questions unless something is genuinely ambiguous. Smart defaults beat wizards.
 
 ---
@@ -81,6 +89,7 @@ Emit a **single self-contained HTML file** at the path the user specifies (or `~
 - [ ] **#18** Data-ink ratio ≥80% on charts. No 3D, no gradients, no chartjunk.
 - [ ] **#19** Headlines + key visuals in the top-left band. First 200px vertical = primary attention zone.
 - [ ] **#20** Pick one mode per deck and stay in it. Presenter (sparse, ≤15 words/slide) OR document (denser, hierarchical). Never mix.
+- [ ] **#21 (default ON)** Brand logo present on every slide unless the user has explicitly opted out. Default placement: small wordmark, bottom-left, ~24px tall, inside the 5% safe-zone. Use the logo from `brand-style.md` (path or inline SVG) — never a placeholder.
 
 ---
 
@@ -111,6 +120,7 @@ Emit a **single self-contained HTML file** at the path the user specifies (or `~
 - Don't pick ad-hoc spacing values like 13px or 27px (Rule #15)
 - Don't write paragraphs (Rule #10 — slides aren't documents)
 - Don't mix presenter and document mode (Rule #20)
+- Don't omit the brand logo unless the user explicitly said no (Rule #21 — default ON)
 
 ---
 
