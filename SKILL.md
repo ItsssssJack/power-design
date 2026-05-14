@@ -97,15 +97,22 @@ Copy this shell into every generated HTML deck (adapt brand tokens):
   }
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   .stage {
+    position: relative;
     width: 100vw; height: 100vh;
-    display: grid; place-items: center;
     overflow: hidden;
   }
+  /* The slide is absolutely positioned and centered with translate(-50%,-50%),
+     then scaled. CSS Grid `place-items: center` does NOT center oversized
+     children — they pin to the start of the grid area. Absolute + translate +
+     scale is the canonical pattern. */
   .slide {
+    position: absolute;
+    top: 50%; left: 50%;
     width: var(--slide-w);
     height: var(--slide-h);
     aspect-ratio: 16 / 9;
-    position: relative;
+    transform: translate(-50%, -50%) scale(min(calc(100vw / 1920), calc(100vh / 1080)));
+    transform-origin: center;
     overflow: hidden;                 /* HARD clip — surfaces overflow */
     padding: var(--safe);
     box-sizing: border-box;
@@ -115,9 +122,6 @@ Copy this shell into every generated HTML deck (adapt brand tokens):
     align-content: start;
     background: var(--brand-bg, #fff);
     color: var(--brand-fg, #111);
-    /* Scale entire 1920×1080 frame to viewport without distortion */
-    transform: scale(min(calc(100vw / 1920), calc(100vh / 1080)));
-    transform-origin: center;
   }
   /* Body text containers must declare max-height to surface overflow */
   .slide__body { max-height: calc(var(--slide-h) - 2 * var(--safe)); overflow: hidden; }
@@ -140,19 +144,44 @@ Copy this shell into every generated HTML deck (adapt brand tokens):
 - **Document mode:** hard cap **60 words/slide**.
 - If content exceeds the cap, split into a new slide. Never shrink the type below floors (24px body / 48px headline) to make text fit.
 
-**Post-emit overflow verification (mandatory):**
-After writing the HTML, before claiming the deck is done, programmatically verify no slide overflows. Use a headless check:
+**Post-emit visual verification (mandatory — headless browser, not inline JS).**
+
+A `<script>`-tag check inside the page is fine as a debug banner, but **the generator must not report a deck as ready until a headless browser has measured it**. The required pattern:
+
+1. Install Playwright once: `npm install -D playwright && npx playwright install chromium`.
+2. After emitting the HTML, run a Node verifier that:
+   - Launches `chromium` headless.
+   - Sets viewport to **native 1920×1080** (matches design size).
+   - Injects an init script that neutralizes `.slide { transform: none; position: static }` so geometry reads at design size (the visual scale transform is compositor-only and confuses bounding-box math otherwise).
+   - For each `.slide`: measure `scrollWidth`, `scrollHeight`, and walk all descendants checking if any `getBoundingClientRect()` extends past the slide's own bounding rect.
+   - Save a per-slide PNG to `verify-report/slide-NN.png` and a `report.json`.
+   - Exit non-zero if any slide overflows.
+
+Minimal verifier (drop into the project as `verify-deck.mjs`):
 
 ```js
-// Pseudocode for the generator's self-check after emit
-for (const slide of document.querySelectorAll('.slide')) {
-  if (slide.scrollHeight > 1080 || slide.scrollWidth > 1920) {
-    throw new Error(`Slide overflows 16:9 frame — split content or reduce type`);
-  }
+import { chromium } from "playwright";
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+const page = await ctx.newPage();
+await page.addInitScript(() => {
+  const s = document.createElement("style");
+  s.textContent = `.slide{transform:none!important;position:static!important;top:auto!important;left:auto!important}.stage{position:static!important;width:1920px!important;height:1080px!important;overflow:visible!important}.deck{overflow:visible!important;height:auto!important}`;
+  document.documentElement.appendChild(s);
+});
+await page.goto("file:///" + process.argv[2].replace(/\\/g, "/"));
+const fails = [];
+for (const s of await page.locator(".slide").all()) {
+  const r = await s.evaluate(el => ({ w: el.scrollWidth, h: el.scrollHeight }));
+  if (r.w > 1920 || r.h > 1080) fails.push(r);
 }
+await browser.close();
+process.exit(fails.length ? 1 : 0);
 ```
 
-If using Chrome MCP / Playwright is available, open the file and run the check. If not, manually inspect each slide bounding box. **Never ship a deck where any `.slide` has `scrollHeight > 1080`.**
+**Run order:** generator emits HTML → verifier runs → if any slide fails, the generator must re-emit that slide with reduced content (see Rule #26 below) and re-verify. Only when the verifier exits 0 does the generator surface the deck path to the user.
+
+**For PowerPoint output (pptxgenjs):** add a parallel `verify-pptx.py` that opens the `.pptx` with `python-pptx` and asserts every shape sits inside the slide canvas (`shape.left + shape.width ≤ slide_width`, same for height). Geometric check only — doesn't detect text auto-fit, but catches structural placement bugs.
 
 ---
 
@@ -295,6 +324,7 @@ pres.writeFile({ fileName: "<topic>-deck.pptx" });
 - [ ] **#23 (word budget)** Presenter mode ≤15 words/slide, document mode ≤60 words/slide. If over budget, split into a new slide — never shrink type below the 24px body / 48px headline floor.
 - [ ] **#24 (overflow verification)** After emit, programmatically verify no `.slide` has `scrollHeight > 1080` or `scrollWidth > 1920`. If any does, regenerate that slide with reduced content.
 - [ ] **#25 (imagery treatment)** When the deck uses imagery, every image carries one brand-locked treatment: full-bleed scrim (40–70% opacity), duotone, color grade, grain overlay, or framed-with-rule-of-thirds anchor. Never raw stock photo. Text-on-image: contrast ≥4.5:1 at 9 sample points.
+- [ ] **#26 (verification gate + auto-retry)** Before reporting the deck path to the user, run the headless verifier (rule #24). If any slide fails, bump that slide into a lower-content "tier" (shorter subhead, smaller display type, fewer cards) and re-emit. Loop up to 3 retries per slide. If a slide still fails after retry 3, hard-fail and show the user the verifier report + per-slide PNGs — never silently ship a deck that has not passed verification.
 
 ---
 
@@ -330,6 +360,9 @@ pres.writeFile({ fileName: "<topic>-deck.pptx" });
 - Don't shrink type below the 24px body / 48px headline floor to make content fit — split into a new slide instead (Rule #23)
 - Don't ship a deck without running the post-emit overflow check (Rule #24)
 - Don't drop a raw stock photo onto a slide — every image needs a brand-locked treatment (Rule #25)
+- Don't use `display: grid; place-items: center` on the slide's parent — CSS Grid does not center oversized children. Use absolute positioning with `translate(-50%, -50%) scale(...)` (Rule #22)
+- Don't rely on an in-page `<script>` overflow banner as the verification gate — that only fires after the user has the file. Use the headless Playwright verifier as the gate (Rule #24, #26)
+- Don't ship a deck after a verifier failure without retrying. Bump the failing slide's content tier and re-emit (Rule #26)
 
 ---
 
